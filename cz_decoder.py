@@ -1,5 +1,4 @@
 import os
-import re
 import sys
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -23,11 +22,8 @@ if sys.version_info >= (3, 12):
         sys.modules['distutils'] = type(sys)('distutils')
         sys.modules['distutils'].version = _V
 
-import fitz
-from PIL import Image, ImageOps, ImageFilter
-from pylibdmtx.pylibdmtx import decode
-from openpyxl import Workbook
-from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
+from czdecoder.pipeline import build_page_rows, recognize_row
+from czdecoder.excel import save_excel
 from tksheet import Sheet
 
 # --- Drag'n'Drop: tkinterdnd2 ---
@@ -44,84 +40,6 @@ except ImportError:
 
 
 APP_TITLE = "Честный знак PDF → Excel"
-
-
-def clean_for_excel(value: str) -> str:
-    if value is None:
-        return ""
-    value = ILLEGAL_CHARACTERS_RE.sub("", str(value))
-    return " ".join(value.split())
-
-
-def parse_gs1_datamatrix(raw: str) -> dict:
-    result = {"gtin": "", "full_dm": raw}
-    parts = raw.split("\x1d")
-    first = parts[0]
-    if first.startswith("01") and len(first) >= 16:
-        result["gtin"] = first[2:16]
-    return result
-
-
-def decode_datamatrix_from_pil(img):
-    variants = [
-        img,
-        ImageOps.grayscale(img),
-        ImageOps.autocontrast(ImageOps.grayscale(img)),
-    ]
-    enlarged = variants[2].resize((variants[2].width * 2, variants[2].height * 2))
-    variants.append(enlarged)
-    variants.append(enlarged.filter(ImageFilter.SHARPEN))
-
-    found = []
-    seen = set()
-    for variant in variants:
-        try:
-            results = decode(variant)
-            for item in results:
-                text = item.data.decode("utf-8", errors="ignore")
-                text = clean_for_excel(text)
-                if text and text not in seen:
-                    seen.add(text)
-                    found.append(text)
-        except Exception:
-            pass
-        if found:
-            break
-    return found
-
-
-def render_page_to_image(page, zoom=3):
-    matrix = fitz.Matrix(zoom, zoom)
-    pix = page.get_pixmap(matrix=matrix, alpha=False)
-    return Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-
-
-def extract_pn_and_qty(blocks) -> tuple:
-    text_blocks = []
-    dm_block_y = None
-    for b in blocks:
-        t = b[4].strip().replace("\xa0", "").replace("\xad", "-")
-        if t.startswith("01"):
-            dm_block_y = b[1]
-            continue
-        if t:
-            text_blocks.append((b[1], t))
-
-    text_blocks.sort(key=lambda x: x[0])
-    pn_parts = []
-    qty = ""
-    for y, t in text_blocks:
-        if dm_block_y and y > dm_block_y:
-            continue
-        m = re.search(r"(\d+)\s*шт\.?", t)
-        if m:
-            qty = m.group(1)
-            cleaned = t.replace(m.group(0), "").strip()
-            if cleaned:
-                pn_parts.append(cleaned.replace(" ", ""))
-        else:
-            pn_parts.append(t.replace(" ", ""))
-    return "".join(pn_parts), qty
 
 
 # --- Состояние ---
@@ -157,24 +75,7 @@ def refresh_sheet():
 
 
 def _add_files(files):
-    new_rows = []
-    for p in files:
-        try:
-            doc = fitz.open(p)
-            for i in range(len(doc)):
-                new_rows.append({
-                    "full_dm": "",
-                    "gtin": "",
-                    "pn": "",
-                    "qty": "",
-                    "file_path": p,
-                    "file_name": os.path.basename(p),
-                    "page_num": i + 1,
-                })
-            doc.close()
-        except Exception:
-            pass
-
+    new_rows = build_page_rows(list(files))
     app_state["rows"].extend(new_rows)
     app_state["recognized"] = False
     refresh_sheet()
@@ -191,16 +92,13 @@ def load_pdfs():
 
 
 def load_folder():
+    from czdecoder.pipeline import list_pdf_paths
     folder = filedialog.askdirectory(title="Выберите папку с PDF файлами")
     if not folder:
         return
-    pdfs = []
-    for root_dir, _, files in os.walk(folder):
-        for f in files:
-            if f.lower().endswith(".pdf"):
-                pdfs.append(os.path.join(root_dir, f))
+    pdfs = list_pdf_paths(folder)
     if pdfs:
-        _add_files(sorted(pdfs))
+        _add_files(pdfs)
     else:
         messagebox.showinfo("Пусто", "PDF файлы в папке не найдены.")
 
@@ -232,29 +130,9 @@ def recognize():
 
     try:
         for r in app_state["rows"]:
-            doc = fitz.open(r["file_path"])
-            page = doc.load_page(r["page_num"] - 1)
-            img = render_page_to_image(page, zoom=3)
-            dm_codes = decode_datamatrix_from_pil(img)
-            blocks = page.get_text("blocks")
-
-            if dm_codes:
-                dm_raw = dm_codes[0]
-                parsed = parse_gs1_datamatrix(dm_raw)
-                pn, qty = extract_pn_and_qty(blocks)
-                r["full_dm"] = dm_raw
-                r["gtin"] = parsed["gtin"]
-                r["pn"] = pn
-                r["qty"] = qty
-            else:
-                r["full_dm"] = "(не найден)"
-                r["gtin"] = ""
-                r["pn"] = ""
-                r["qty"] = ""
-
+            recognize_row(r)
             done += 1
             progress_bar["value"] = done
-            doc.close()
             root.update_idletasks()
 
         app_state["recognized"] = True
@@ -266,7 +144,7 @@ def recognize():
         set_status("Ошибка распознавания")
 
 
-def save_excel():
+def save_excel_gui():
     if not app_state["rows"]:
         messagebox.showwarning("Нет данных", "Сначала загрузите PDF файлы.")
         return
@@ -281,19 +159,7 @@ def save_excel():
     excel_path = os.path.join(out_dir, "result.xlsx")
 
     try:
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "DataMatrix"
-        ws.append(["Полный DM", "GTIN", "PN", "Кол-во", "Файл", "Страница"])
-        for r in app_state["rows"]:
-            ws.append([r["full_dm"], r["gtin"], r["pn"], r["qty"], r["file_name"], r["page_num"]])
-        ws.column_dimensions["A"].width = 55
-        ws.column_dimensions["B"].width = 18
-        ws.column_dimensions["C"].width = 40
-        ws.column_dimensions["D"].width = 10
-        ws.column_dimensions["E"].width = 24
-        ws.column_dimensions["F"].width = 10
-        wb.save(excel_path)
+        save_excel(app_state["rows"], excel_path)
         set_status(f"Сохранено: {excel_path}")
         messagebox.showinfo("Готово", f"Excel сохранён:\n{excel_path}")
     except Exception as e:
@@ -332,7 +198,7 @@ toolbar.pack(fill="x", pady=(0, 10))
 ttk.Button(toolbar, text="Загрузить PDF", command=load_pdfs).pack(side="left")
 ttk.Button(toolbar, text="Загрузить папку", command=load_folder).pack(side="left", padx=(8, 0))
 ttk.Button(toolbar, text="Распознать", command=recognize).pack(side="left", padx=(8, 0))
-ttk.Button(toolbar, text="Сохранить Excel", command=save_excel).pack(side="left", padx=(8, 0))
+ttk.Button(toolbar, text="Сохранить Excel", command=save_excel_gui).pack(side="left", padx=(8, 0))
 ttk.Button(toolbar, text="Очистить", command=clear_table).pack(side="left", padx=(8, 0))
 
 drop_text = "Перетащите PDF файлы сюда"
