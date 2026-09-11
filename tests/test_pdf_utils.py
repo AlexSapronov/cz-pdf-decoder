@@ -9,11 +9,14 @@ def _block(y, text):
     return (0, y, 0, y + 10, text, 0, 0)
 
 
+GTIN = "04640638345218"  # валидная контрольная цифра (из ТЗ)
+PRE = "01" + GTIN
+
 def test_pn_and_qty_simple():
     blocks = [
         _block(10, "Товар Пример"),
         _block(30, "5 шт"),
-        _block(50, "0104650074900017"),
+        _block(50, PRE),
     ]
     pn, qty = extract_pn_and_qty(blocks)
     assert pn == "ТоварПример"
@@ -22,7 +25,7 @@ def test_pn_and_qty_simple():
 
 def test_pn_below_dm_ignored():
     blocks = [
-        _block(10, "0104650074900017"),  # DM-блок сверху
+        _block(10, PRE),  # DM-блок сверху
         _block(30, "Это Итог"),
     ]
     pn, qty = extract_pn_and_qty(blocks)
@@ -33,7 +36,7 @@ def test_pn_below_dm_ignored():
 def test_qty_only_no_pn():
     blocks = [
         _block(10, "3 шт"),
-        _block(20, "0104650074900017"),
+        _block(20, PRE),
     ]
     pn, qty = extract_pn_and_qty(blocks)
     assert pn == ""
@@ -54,7 +57,7 @@ def test_nbsp_and_soft_hyphen():
     blocks = [
         _block(10, "Товар\xa0с\xadпереносом"),
         _block(20, "2 шт"),
-        _block(30, "0104650074900017"),
+        _block(30, PRE),
     ]
     pn, qty = extract_pn_and_qty(blocks)
     # \xa0 (nbsp) удаляется, \xad (мягкий перенос) → '-'

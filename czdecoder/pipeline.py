@@ -33,6 +33,9 @@ def build_page_rows(paths: list[str]) -> list[dict]:
             rows.append({
                 "full_dm": "",
                 "gtin": "",
+                # serial — НАМЕРЕННОЕ внутреннее поле: выделяется парсером, но
+                # НЕ выводится ни в GUI (tksheet), ни в Excel (см. excel.py).
+                # Оно есть в row для будущего использования / отладки.
                 "serial": "",
                 "pn": "",
                 "qty": "",

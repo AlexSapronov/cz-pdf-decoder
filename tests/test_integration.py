@@ -42,7 +42,8 @@ def _make_pdf_with_dm(raw: str, pn_text: str, qty_text: str, path: str):
 
 def test_end_to_end(tmp_path):
     import os
-    raw = "0104650074900017" + "\x1d" + "21SERIALXYZ"
+    # Канон: 01<GTIN>21<serial> (без GS между 01 и 21).
+    raw = "0104640638345218" + "21SERIALXYZ"
     pdf_path = os.path.join(str(tmp_path), "sample.pdf")
     # PN латиницей: кириллица через insert_text без встроенного шрифта
     # на headless-VPS извлекается как глифы-заполнители ('·').
@@ -54,7 +55,7 @@ def test_end_to_end(tmp_path):
     recognize_row(rows[0])
     # Core-ценность: GS1-парсинг полного DM (GTIN + serial целиком).
     assert rows[0]["full_dm"] == raw
-    assert rows[0]["gtin"] == "04650074900017"
+    assert rows[0]["gtin"] == "04640638345218"
     assert rows[0]["serial"] == "SERIALXYZ"
     # PN/qty-извлечение покрыто отдельно юнитами (test_pdf_utils.py),
     # т.к. здесь текстовый слой кирилличен и деградирует на headless-VPS.
@@ -62,7 +63,7 @@ def test_end_to_end(tmp_path):
 
 def test_excel_export(tmp_path):
     rows = [{
-        "full_dm": "01...", "gtin": "04650074900017",
+        "full_dm": "01...", "gtin": "04640638345218",
         "serial": "", "pn": "Тест", "qty": "1",
         "file_name": "a.pdf", "page_num": 1,
     }]
