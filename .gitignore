@@ -1,0 +1,34 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Build
+build/
+dist/
+*.spec.bak
+
+# Logs
+*.log
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# User documents (do not commit real working files)
+*.pdf
+*.xlsx
+*.xls
+
+# Explicit exception for synthetic test fixtures
+!tests/fixtures/**
+!tests/fixtures/*.pdf
+!tests/fixtures/*.xlsx
