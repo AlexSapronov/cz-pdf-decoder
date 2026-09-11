@@ -10,3 +10,6 @@ pymupdf==1.28.2
 pytest==9.1.1
 tkinterdnd2==0.6.3
 tksheet==7.6.0
+# setuptools нужен для pylibdmtx на Python 3.12 (distutils удалён из stdlib).
+# Не входит в pip freeze; фиксируем минимально.
+setuptools>=68
