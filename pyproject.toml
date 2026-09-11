@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cz-pdf-decoder"
+version = "1.0.0"
+description = "Честный ЗНАК: DataMatrix декодер из PDF → Excel"
+requires-python = ">=3.11"
+dependencies = [
+    "PyMuPDF>=1.24",
+    "Pillow>=10.0",
+    "pylibdmtx>=0.1.9",
+    "openpyxl>=3.1",
+    "tksheet>=7.0",
+]
+
+[project.optional-dependencies]
+gui = ["tkinterdnd2>=0.4"]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
