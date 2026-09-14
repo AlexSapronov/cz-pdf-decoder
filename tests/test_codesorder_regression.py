@@ -49,3 +49,37 @@ def test_codesorder_pdf_embedded_image_detected():
         codes.extend(decode_datamatrix_from_pil(im))
     assert codes, "embedded raster должен содержать DataMatrix"
     assert codes[0].startswith("01046705539017872152")
+
+
+def test_codesorder_pdf_legacy_page_render_path():
+    """Доказанно рабочий на Windows baseline: page render zoom=3 + legacy
+    preprocessing должен декодировать target PDF БЕЗ enhanced-стратегий.
+
+    Это отдельно гарантирует, что legacy raster-путь (а не бинаризация/embedded)
+    первым находит код — т.к. именно он подтверждён на Windows.
+    """
+    import fitz
+    from czdecoder.datamatrix import _legacy_variants, clean_text
+    from czdecoder.pdf_utils import render_page_to_image
+
+    doc = fitz.open(FIXTURE)
+    page = doc[0]
+    img = render_page_to_image(page, zoom=3)
+    doc.close()
+
+    from pylibdmtx.pylibdmtx import decode
+
+    found = []
+    for variant in _legacy_variants(img):
+        try:
+            for item in decode(variant):
+                text = clean_text(item.data.decode("utf-8", errors="ignore"))
+                if text and text not in found:
+                    found.append(text)
+        except Exception:
+            continue
+        if found:
+            break
+
+    assert found, "legacy page render + exact baseline variants должны декодировать"
+    assert found[0].startswith("01046705539017872152")

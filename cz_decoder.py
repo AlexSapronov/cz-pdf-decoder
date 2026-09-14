@@ -216,8 +216,25 @@ if HAS_DND:
 
 sheet = Sheet(main, headers=["Полный DM", "GTIN", "PN", "Кол-во", "Файл", "Страница"])
 sheet.pack(fill="both", expand=True)
-sheet.enable_bindings(("single_select", "row_select", "column_width_resize",
-                       "arrowkeys", "right_click_popup_menu", "rc_select", "copy"))
+
+# Excel-like selection & copy (tksheet >= 7.6 штатно это поддерживает).
+# Таблица остаётся read-only по содержимому: мы НЕ включаем edit_cell /
+# paste / delete / cut / undo / redo / edit_header / edit_index — поэтому
+# пользователь может выделять, копировать, менять ширину колонок и
+# скроллить, но не редактировать распознанные значения.
+sheet.enable_bindings((
+    "toggle_select",           # клик = одна ячейка; Ctrl+клик = добавить/убрать
+    "drag_select",             # drag мышью = прямоугольный диапазон
+    "column_select",           # клик по заголовку = весь столбец
+    "row_select",              # клик по номеру строки = вся строка
+    "select_all",              # Ctrl+A = вся таблица
+    "ctrl_select",             # Ctrl+клик = multi-select (доп. области)
+    "arrowkeys",               # навигация + Shift+стрелки = расширение выделения
+    "copy",                    # Ctrl+C → TAB-разделённые колонки, newline-строки
+    "column_width_resize",     # менять ширину колонок
+    "right_click_popup_menu",
+    "rc_select",
+))
 
 bottom = ttk.Frame(main)
 bottom.pack(fill="x", pady=(10, 0))

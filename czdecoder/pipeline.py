@@ -63,19 +63,21 @@ def _decode_any(images: list) -> list[str]:
 def recognize_row(r: dict, zoom: float = 3) -> None:
     """Распознаёт одну страницу и заполняет строку in-place.
 
-    Стратегия:
-      1) embedded raster images (native resolution, без масштабирования) —
-         это предпочтительный источник, т.к. page render дробно масштабирует
-         квадратную сетку модулей и может исказить код;
-      2) fallback — полный page render (как в старом поведении).
+    Стратегия (ПРИОРИТЕТЫ ВАЖНЫ):
+      A) full page render zoom=3 → decode (legacy path, доказанно работает
+         на Windows baseline);
+      B) embedded raster images в native-разрешении → decode;
+      C) fallback — тот же page render (код выше уже покрывает A, но на
+         случай деградации zoom оставляем единственный page render).
     """
     doc = fitz.open(r["file_path"])
     try:
         page = doc.load_page(r["page_num"] - 1)
         blocks = page.get_text("blocks")
 
-        candidates = extract_embedded_images(page)
-        candidates.append(render_page_to_image(page, zoom=zoom))
+        page_img = render_page_to_image(page, zoom=zoom)
+        candidates = [page_img]           # A — legacy первым
+        candidates.extend(extract_embedded_images(page))  # B — fallback
         dm_codes = _decode_any(candidates)
 
         if dm_codes:
