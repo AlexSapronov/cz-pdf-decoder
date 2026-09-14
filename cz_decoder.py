@@ -4,6 +4,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from czdecoder.pipeline import build_page_rows, recognize_row
 from czdecoder.excel import save_excel
+from czdecoder.shortcuts import classify_shortcut
 from tksheet import Sheet
 
 # --- Drag'n'Drop: tkinterdnd2 ---
@@ -29,6 +30,46 @@ app_state = {"rows": [], "recognized": False}
 def set_status(text: str):
     status_var.set(text)
     root.update_idletasks()
+
+
+def _install_layout_independent_shortcuts(sheet):
+    """Делает Ctrl+C и Ctrl+A независимыми от раскладки клавиатуры.
+
+    Штатные tksheet copy/select_all привязаны к keysym 'c'/'C'/'a'/'A', поэтому
+    при русской раскладке (физическая C → 'Cyrillic_es', физическая A →
+    'Cyrillic_ef') они не срабатывают. Здесь добавляем fallback на физическую
+    клавишу: ловим <Control-KeyPress> и, если это не латиница (т.е. штатный bind
+    гарантированно не сработал), вызываем ШТАТНЫЙ метод tksheet ctrl_c()/select_all().
+    """
+    mt = sheet.MT
+
+    def handler(event):
+        action = classify_shortcut(
+            bool(event.state & 0x0004),  # state бит 0x0004 = Ctrl зажат
+            event.keysym,
+            event.keycode or 0,
+        )
+        if action == "copy":
+            try:
+                mt.ctrl_c()
+            except Exception:
+                pass
+            return "break"
+        if action == "select_all":
+            try:
+                mt.select_all()
+            except Exception:
+                pass
+            return "break"
+        return None
+
+    # Вешаем на body-таблицу (там фокус при выделении ячеек) и на сам Sheet
+    # (покрывает фокус на RI/CH при выделении строки/столбца).
+    for w in (sheet.MT, sheet.RI, sheet.CH, sheet.TL, sheet):
+        try:
+            w.bind("<Control-KeyPress>", handler, add="+")
+        except Exception:
+            pass
 
 
 def refresh_sheet():
@@ -215,6 +256,9 @@ sheet.enable_bindings((
     "right_click_popup_menu",
     "rc_select",
 ))
+
+# Ctrl+C / Ctrl+A должны работать независимо от раскладки клавиатуры (EN/RU).
+_install_layout_independent_shortcuts(sheet)
 
 bottom = ttk.Frame(main)
 bottom.pack(fill="x", pady=(10, 0))
