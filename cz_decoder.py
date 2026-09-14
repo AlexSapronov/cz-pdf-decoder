@@ -1,26 +1,6 @@
 import os
-import sys
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
-
-# --- Monkey-patch для pylibdmtx на Python 3.12+ (нет distutils) ---
-if sys.version_info >= (3, 12):
-    class _FakeLooseVersion:
-        def __init__(self, vstring=""): self.vstring = vstring
-        def __ge__(self, o): return True
-        def __le__(self, o): return True
-        def __gt__(self, o): return False
-        def __lt__(self, o): return False
-        def __eq__(self, o): return True
-        def __ne__(self, o): return False
-    try:
-        import distutils.version
-        distutils.version.LooseVersion = _FakeLooseVersion
-    except ImportError:
-        class _V: LooseVersion = _FakeLooseVersion
-        sys.modules['distutils.version'] = _V
-        sys.modules['distutils'] = type(sys)('distutils')
-        sys.modules['distutils'].version = _V
 
 from czdecoder.pipeline import build_page_rows, recognize_row
 from czdecoder.excel import save_excel

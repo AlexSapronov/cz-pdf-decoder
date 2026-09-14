@@ -17,22 +17,52 @@ from PIL import Image, ImageOps, ImageFilter
 if TYPE_CHECKING:
     from pylibdmtx.pylibdmtx import decode as _decode
 
-# pylibdmtx (wrapper.py) требует distutils.version.LooseVersion. На Python 3.12
-# distutils удалён из stdlib; ставку делаем на setuptools._distutils (есть на
-# CI-раннерах). Подставляем только если distutils реально отсутствует — это
-# идемпотентный shim, не ломающий 3.11.
+# pylibdmtx (wrapper.py) требует distutils.version.LooseVersion в top-level.
+# На Python 3.12+ distutils удалён из stdlib. НЕ подменяем LooseVersion
+# самописным компаратором (это ломает pylibdmtx: он выбирает ctypes struct
+# layout по `LooseVersion(dmtxVersion()) < LooseVersion('0.7.5')`, и фейковый
+# компаратор с `__lt__ -> False` заставляет его выбрать НОВЫЙ layout для
+# СТАРОЙ libdmtx 0.7.4 → access violation). Вместо этого, только если
+# настоящий distutils.version отсутствует, подставляем РЕАЛЬНЫЙ
+# setuptools._distutils.version (настоящий LooseVersion).
 def _ensure_distutils():
+    # 1) Если distutils.version уже импортируется и это НАСТОЯЩИЙ
+    #    LooseVersion — ничего не делаем.
     try:
         import distutils.version  # noqa: F401
-        return
-    except ImportError:
+        from distutils.version import LooseVersion  # noqa: F401
+        # Параноидальная проверка: LooseVersion — настоящий сравнивающий объект.
+        if LooseVersion("0.7.4") < LooseVersion("0.7.5"):
+            return
+    except (ImportError, AttributeError):
         pass
+
+    # 2) distutils недоступен (или в sys.modules лежит фейк) → подставляем
+    #    настоящий setuptools._distutils целиком (включая .version).
     try:
-        import setuptools  # noqa: F401
-        from setuptools import _distutils  # noqa: F401
-        sys.modules.setdefault("distutils", _distutils)
+        import setuptools._distutils as _distutils
+        import setuptools._distutils.version as _distutils_version
     except ImportError:
         pass
+    else:
+        # Регистрируем в sys.modules так, чтобы `import distutils.version`
+        # и `from distutils.version import LooseVersion` работали как раньше.
+        sys.modules["distutils"] = _distutils
+        sys.modules["distutils.version"] = _distutils_version
+        # Делаем подмодуль видимым как атрибут родительского пакета.
+        _distutils.version = _distutils_version
+
+    # 3) Финальная самопроверка корректности сравнения версий.
+    try:
+        from distutils.version import LooseVersion
+        assert LooseVersion("0.7.4") < LooseVersion("0.7.5")
+        assert not (LooseVersion("0.7.5") < LooseVersion("0.7.5"))
+        assert LooseVersion("0.7.8") > LooseVersion("0.7.5")
+    except (ImportError, AssertionError, AttributeError) as exc:
+        raise RuntimeError(
+            "Не удалось обеспечить корректный distutils.version.LooseVersion "
+            f"для pylibdmtx: {exc!r}"
+        ) from exc
 
 
 def clean_text(value: str) -> str:
