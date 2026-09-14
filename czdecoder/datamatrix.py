@@ -133,22 +133,6 @@ def _enhanced_variants(img: Image.Image) -> list[Image.Image]:
     return variants
 
 
-def _variant_names() -> list[str]:
-    """Человекочитаемые имена вариантов в порядке генерации (для лога)."""
-    return [
-        "original",
-        "grayscale",
-        "autocontrast",
-        "legacy_resize_x2",
-        "legacy_resize_x2_sharpen",
-        "binary_border_0",
-        "binary_border_4",
-        "binary_border_8",
-        "binary_border_16",
-        "binary_nearest_x3_border16",
-    ]
-
-
 def decode_datamatrix_from_pil(img: Image.Image) -> list[str]:
     """Пробует несколько предобработок изображения и возвращает
     список уникальных декодированных строк (обычно 0 или 1 элемент).
@@ -160,48 +144,18 @@ def decode_datamatrix_from_pil(img: Image.Image) -> list[str]:
     _ensure_distutils()
     from pylibdmtx.pylibdmtx import decode  # ленивый импорт (см. docstring)
 
-    # Диагностика: runtime info при первом decode + версия/путь libdmtx.
-    _diag = None
-    try:
-        from . import diagnostics as _diag
-        _diag.log_runtime_info()
-        _diag.log_libdmtx_runtime()
-        _diag.log_dll_candidates()
-    except Exception:
-        pass  # диагностика никогда не должна ронять decode
-
     found: list[str] = []
     seen: set[str] = set()
 
     variants = _legacy_variants(img) + _enhanced_variants(img)
-    variant_names = _variant_names()
 
-    for i, variant in enumerate(variants):
-        vname = variant_names[i] if i < len(variant_names) else f"variant_{i}"
-        if _diag is not None:
-            try:
-                _diag.log_decode_attempt("datamatrix", i, vname, variant)
-            except Exception:
-                pass
+    for variant in variants:
         try:
             results = decode(variant)
-        except Exception as exc:
-            # НЕ проглатываем молча: логируем полный traceback, но продолжаем.
-            if _diag is not None:
-                try:
-                    _diag.log(f"DECODE variant={vname} RAISED")
-                    _diag.log_exception(f"decode({vname})", exc)
-                except Exception:
-                    pass
+        except Exception:
+            # Плохой вариант пропускаем (например, decode вернул гну время от
+            # времени на отдельных растрах); продолжаем с другими вариантами.
             continue
-        # results может быть None или пустым списком — логируем оба случая.
-        if _diag is not None:
-            try:
-                n = len(results) if results is not None else None
-                _diag.log(f"DECODE variant={vname} -> {n!r} result(s): "
-                          f"{[r.data[:40] for r in results] if results else []}")
-            except Exception:
-                pass
         if not results:
             continue
         for item in results:

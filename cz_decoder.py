@@ -6,6 +6,8 @@ from czdecoder.pipeline import build_page_rows, recognize_row
 from czdecoder.excel import save_excel
 from czdecoder.shortcuts import classify_shortcut
 from czdecoder.bindings import SHEET_BINDINGS
+from czdecoder.paths import get_common_pdf_directory, can_save_next_to_pdf
+from czdecoder.version import APP_VERSION
 from tksheet import Sheet
 
 # --- Drag'n'Drop: tkinterdnd2 ---
@@ -21,11 +23,13 @@ except ImportError:
     pass
 
 
-APP_TITLE = "Честный знак PDF → Excel"
+APP_TITLE = f"Честный знак PDF → Excel v{APP_VERSION}"
 
 
 # --- Состояние ---
 app_state = {"rows": [], "recognized": False}
+# Ссылка на кнопку «Сохранить рядом с PDF» (создаётся ниже в GUI-блоке).
+save_next_btn = None
 
 
 def set_status(text: str):
@@ -101,6 +105,7 @@ def _add_files(files):
     app_state["rows"].extend(new_rows)
     app_state["recognized"] = False
     refresh_sheet()
+    update_save_buttons_state()
     set_status(f"Загружено страниц: {len(new_rows)}")
 
 
@@ -159,11 +164,26 @@ def recognize():
 
         app_state["recognized"] = True
         refresh_sheet()
+        update_save_buttons_state()
         set_status(f"Распознано страниц: {done}")
 
     except Exception as e:
         messagebox.showerror("Ошибка", f"Ошибка распознавания:\n{e}")
         set_status("Ошибка распознавания")
+
+
+def _save_excel_to(excel_path: str):
+    """Общая реализация сохранения Excel (без диалога выбора папки).
+
+    Вызывает save_excel(), обновляет статус, показывает info/error box.
+    """
+    try:
+        save_excel(app_state["rows"], excel_path)
+        set_status(f"Сохранено: {excel_path}")
+        messagebox.showinfo("Готово", f"Excel сохранён:\n{excel_path}")
+    except Exception as e:
+        messagebox.showerror("Ошибка", f"Ошибка сохранения:\n{e}")
+        set_status("Ошибка сохранения")
 
 
 def save_excel_gui():
@@ -178,21 +198,42 @@ def save_excel_gui():
     if not out_dir:
         return
 
-    excel_path = os.path.join(out_dir, "result.xlsx")
+    _save_excel_to(os.path.join(out_dir, "result.xlsx"))
 
-    try:
-        save_excel(app_state["rows"], excel_path)
-        set_status(f"Сохранено: {excel_path}")
-        messagebox.showinfo("Готово", f"Excel сохранён:\n{excel_path}")
-    except Exception as e:
-        messagebox.showerror("Ошибка", f"Ошибка сохранения:\n{e}")
-        set_status("Ошибка сохранения")
+
+def _save_buttons_can_save():
+    """Можно ли сохранить «рядом с PDF»: есть rows, распознано, одна общая папка."""
+    return can_save_next_to_pdf(app_state["rows"], app_state["recognized"])
+
+
+def update_save_buttons_state():
+    state = "normal" if _save_buttons_can_save() else "disabled"
+    if save_next_btn is not None:
+        save_next_btn.config(state=state)  # noqa: save_next_btn — ttk.Button
+
+
+def save_excel_next_to_pdf():
+    if not app_state["rows"]:
+        messagebox.showwarning("Нет данных", "Сначала загрузите PDF файлы.")
+        return
+    if not app_state["recognized"]:
+        messagebox.showwarning("Не распознано", "Сначала нажмите «Распознать».")
+        return
+
+    directory = get_common_pdf_directory(app_state["rows"])
+    if directory is None:
+        messagebox.showwarning(
+            "Разные папки", "PDF находятся в разных папках — сохраните Excel вручную.")
+        return
+
+    _save_excel_to(os.path.join(directory, "result.xlsx"))
 
 
 def clear_table():
     app_state["rows"] = []
     app_state["recognized"] = False
     sheet.set_sheet_data([])
+    update_save_buttons_state()
     set_status("Таблица очищена")
 
 
@@ -211,7 +252,7 @@ status_var = tk.StringVar(value="Готово к работе")
 main = ttk.Frame(root, padding=10)
 main.pack(fill="both", expand=True)
 
-ttk.Label(main, text="Декодер DataMatrix из PDF → Excel",
+ttk.Label(main, text=f"Декодер DataMatrix из PDF → Excel  v{APP_VERSION}",
           font=("Segoe UI", 14, "bold")).pack(anchor="w", pady=(0, 10))
 
 toolbar = ttk.Frame(main)
@@ -221,6 +262,9 @@ ttk.Button(toolbar, text="Загрузить PDF", command=load_pdfs).pack(side=
 ttk.Button(toolbar, text="Загрузить папку", command=load_folder).pack(side="left", padx=(8, 0))
 ttk.Button(toolbar, text="Распознать", command=recognize).pack(side="left", padx=(8, 0))
 ttk.Button(toolbar, text="Сохранить Excel", command=save_excel_gui).pack(side="left", padx=(8, 0))
+save_next_btn = ttk.Button(toolbar, text="Сохранить рядом с PDF",
+                           command=save_excel_next_to_pdf, state="disabled")
+save_next_btn.pack(side="left", padx=(8, 0))
 ttk.Button(toolbar, text="Очистить", command=clear_table).pack(side="left", padx=(8, 0))
 
 drop_text = "Перетащите PDF файлы сюда"

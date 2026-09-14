@@ -53,13 +53,7 @@ def _decode_any(images: list) -> list[str]:
     Порядок изображений важен: callers передают сначала «лучшие» кандидаты
     (page render legacy), затем fallback (embedded raster).
     """
-    from . import diagnostics as _diag
-    for k, im in enumerate(images):
-        if _diag is not None:
-            try:
-                _diag.log(f"TRY source#{k}: {_diag.image_fingerprint(im)}")
-            except Exception:
-                pass
+    for im in images:
         codes = decode_datamatrix_from_pil(im)
         if codes:
             return codes
@@ -83,15 +77,6 @@ def recognize_row(r: dict, zoom: float = 3) -> None:
 
         page_img = render_page_to_image(page, zoom=zoom)
         embedded = extract_embedded_images(page)
-
-        from . import diagnostics as _diag
-        if _diag is not None:
-            try:
-                _diag.log(f"PAGE: file={r['file_name']} page={r['page_num']} "
-                          f"page_render={page_img.size} mode={page_img.mode} "
-                          f"n_embedded={len(embedded)}")
-            except Exception:
-                pass
 
         candidates = [page_img]           # A — legacy первым
         candidates.extend(embedded)       # B — fallback
