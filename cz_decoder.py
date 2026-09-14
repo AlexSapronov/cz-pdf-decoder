@@ -5,6 +5,7 @@ from tkinter import filedialog, messagebox, ttk
 from czdecoder.pipeline import build_page_rows, recognize_row
 from czdecoder.excel import save_excel
 from czdecoder.shortcuts import classify_shortcut
+from czdecoder.bindings import SHEET_BINDINGS
 from tksheet import Sheet
 
 # --- Drag'n'Drop: tkinterdnd2 ---
@@ -243,19 +244,7 @@ sheet.pack(fill="both", expand=True)
 # paste / delete / cut / undo / redo / edit_header / edit_index — поэтому
 # пользователь может выделять, копировать, менять ширину колонок и
 # скроллить, но не редактировать распознанные значения.
-sheet.enable_bindings((
-    "toggle_select",           # клик = одна ячейка; Ctrl+клик = добавить/убрать
-    "drag_select",             # drag мышью = прямоугольный диапазон
-    "column_select",           # клик по заголовку = весь столбец
-    "row_select",              # клик по номеру строки = вся строка
-    "select_all",              # Ctrl+A = вся таблица
-    "ctrl_select",             # Ctrl+клик = multi-select (доп. области)
-    "arrowkeys",               # навигация + Shift+стрелки = расширение выделения
-    "copy",                    # Ctrl+C → TAB-разделённые колонки, newline-строки
-    "column_width_resize",     # менять ширину колонок
-    "right_click_popup_menu",
-    "rc_select",
-))
+sheet.enable_bindings(SHEET_BINDINGS)
 
 # Ctrl+C / Ctrl+A должны работать независимо от раскладки клавиатуры (EN/RU).
 _install_layout_independent_shortcuts(sheet)
