@@ -17,6 +17,7 @@ dist/
 
 # Logs
 *.log
+CZ_Decoder_debug.log
 
 # IDE / OS
 .idea/

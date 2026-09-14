@@ -51,9 +51,15 @@ def _decode_any(images: list) -> list[str]:
 
     Возвращает список уникальных декодированных строк (обычно 0..1 элемент).
     Порядок изображений важен: callers передают сначала «лучшие» кандидаты
-    (embedded raster в native-разрешении), затем fallback (page render).
+    (page render legacy), затем fallback (embedded raster).
     """
-    for im in images:
+    from . import diagnostics as _diag
+    for k, im in enumerate(images):
+        if _diag is not None:
+            try:
+                _diag.log(f"TRY source#{k}: {_diag.image_fingerprint(im)}")
+            except Exception:
+                pass
         codes = decode_datamatrix_from_pil(im)
         if codes:
             return codes
@@ -76,8 +82,19 @@ def recognize_row(r: dict, zoom: float = 3) -> None:
         blocks = page.get_text("blocks")
 
         page_img = render_page_to_image(page, zoom=zoom)
+        embedded = extract_embedded_images(page)
+
+        from . import diagnostics as _diag
+        if _diag is not None:
+            try:
+                _diag.log(f"PAGE: file={r['file_name']} page={r['page_num']} "
+                          f"page_render={page_img.size} mode={page_img.mode} "
+                          f"n_embedded={len(embedded)}")
+            except Exception:
+                pass
+
         candidates = [page_img]           # A — legacy первым
-        candidates.extend(extract_embedded_images(page))  # B — fallback
+        candidates.extend(embedded)       # B — fallback
         dm_codes = _decode_any(candidates)
 
         if dm_codes:
