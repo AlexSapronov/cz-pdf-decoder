@@ -60,10 +60,37 @@ python -m pytest
 
 ```bash
 pip install pyinstaller
-pyinstaller CZ_Decoder_build.spec
+python -m PyInstaller --clean CZ_Decoder_build.spec
 ```
 
-`.spec` автоматически подхватывает `libdmtx-64.dll` из папки `pylibdmtx`.
+Файл `CZ_Decoder_build.spec`:
+
+- автоматически находит `libdmtx-64.dll` (для 64-бит Python) или
+  `libdmtx-32.dll` (для 32-бит) в `pylibdmtx` внутри `site-packages`
+  или user-site (`%APPDATA%\Roaming\Python\Python3xx\site-packages`);
+- кладёт DLL в **корень** собранного приложения (рядом с `CZ_Decoder.exe`),
+  чтобы `pylibdmtx` нашёл её при запуске EXE;
+- если DLL не найдена — сборка падает с понятным сообщением, а не собирает
+  заведомо нерабочий EXE.
+
+### Требования к среде
+
+- **libdmtx DLL** должна быть установлена вместе с `pylibdmtx` (она не входит
+  в pip-wheel `pylibdmtx`, ставится/кладётся отдельно рядом с `pylibdmtx`).
+- **Visual C++ Redistributable 2013 x64** может потребоваться на целевой
+  машине, если используемая сборка `libdmtx-64.dll` слинкована против
+  `msvcr120.dll` / `msvcp120.dll`. Уточните это для вашей конкретной DLL;
+  универсального требования нет.
+
+### Локальная последовательность сборки
+
+```powershell
+git pull
+Remove-Item -Recurse -Force .\build -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force .\dist  -ErrorAction SilentlyContinue
+python -m PyInstaller --clean CZ_Decoder_build.spec
+.\dist\CZ_Decoder.exe
+```
 
 ## Формат GS1 DataMatrix
 
