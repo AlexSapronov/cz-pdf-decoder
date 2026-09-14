@@ -7,7 +7,7 @@ import fitz
 
 from .datamatrix import decode_datamatrix_from_pil
 from .gs1 import parse_gs1_datamatrix
-from .pdf_utils import extract_pn_and_qty, render_page_to_image
+from .pdf_utils import extract_embedded_images, extract_pn_and_qty, render_page_to_image
 
 
 def list_pdf_paths(folder: str) -> list[str]:
@@ -46,14 +46,37 @@ def build_page_rows(paths: list[str]) -> list[dict]:
     return rows
 
 
+def _decode_any(images: list) -> list[str]:
+    """Декодирует первый попавшийся DataMatrix из списка изображений.
+
+    Возвращает список уникальных декодированных строк (обычно 0..1 элемент).
+    Порядок изображений важен: callers передают сначала «лучшие» кандидаты
+    (embedded raster в native-разрешении), затем fallback (page render).
+    """
+    for im in images:
+        codes = decode_datamatrix_from_pil(im)
+        if codes:
+            return codes
+    return []
+
+
 def recognize_row(r: dict, zoom: float = 3) -> None:
-    """Распознаёт одну страницу и заполняет строку in-place."""
+    """Распознаёт одну страницу и заполняет строку in-place.
+
+    Стратегия:
+      1) embedded raster images (native resolution, без масштабирования) —
+         это предпочтительный источник, т.к. page render дробно масштабирует
+         квадратную сетку модулей и может исказить код;
+      2) fallback — полный page render (как в старом поведении).
+    """
     doc = fitz.open(r["file_path"])
     try:
         page = doc.load_page(r["page_num"] - 1)
-        img = render_page_to_image(page, zoom=zoom)
-        dm_codes = decode_datamatrix_from_pil(img)
         blocks = page.get_text("blocks")
+
+        candidates = extract_embedded_images(page)
+        candidates.append(render_page_to_image(page, zoom=zoom))
+        dm_codes = _decode_any(candidates)
 
         if dm_codes:
             dm_raw = dm_codes[0]

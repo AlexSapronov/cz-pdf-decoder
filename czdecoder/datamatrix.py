@@ -45,24 +45,60 @@ def clean_text(value: str) -> str:
     return str(value).strip()
 
 
+def _binarize(img: Image.Image, threshold: int = 128) -> Image.Image:
+    """Строгая бинаризация в ч/б (0/255).
+
+    pylibdmtx/libdmtx чувствителен к полутонам и антиалиасингу: embedded
+    raster DataMatrix часто имеет серые пиксели по краям модулей, из-за чего
+    decode на «сыром» изображении возвращает пустой результат, хотя модули
+    визуально различимы. Жёсткий порог убирает серые переходы.
+    """
+    gray = ImageOps.grayscale(img)
+    return gray.point(lambda p: 0 if p < threshold else 255)
+
+
+def _preprocess_variants(img: Image.Image) -> list[Image.Image]:
+    """Готовит упорядоченный список вариантов для декодирования.
+
+    Порядок важен: сперва дешёвые/нативные варианты, затем бинаризация с
+    нарастающей quiet zone (border) и аккуратное увеличение NEAREST (без
+    интерполяции, иначе модули «плывут»). Border нужен, потому что libdmtx
+    плохо справляется, когда символ прижат к краю растра.
+    """
+    variants: list[Image.Image] = [img]
+
+    gray = ImageOps.grayscale(img)
+    variants.append(gray)
+    variants.append(ImageOps.autocontrast(gray))
+
+    # Бинаризованные варианты: без border и с нарастающей quiet zone.
+    binimg = _binarize(img)
+    for border in (0, 4, 8, 16):
+        bordered = binimg if border == 0 else ImageOps.expand(
+            binimg, border=border, fill=255)
+        variants.append(bordered)
+
+    # Увеличение бинаризованного символа через NEAREST (не размывает модули).
+    enlarged = _binarize(img).resize(
+        (binimg.width * 3, binimg.height * 3), Image.Resampling.NEAREST)
+    enlarged = ImageOps.expand(enlarged, border=16, fill=255)
+    variants.append(enlarged)
+
+    # Мягкий fallback для не-бинарных растров (sharpen поверх autocontrast).
+    variants.append(ImageOps.autocontrast(gray).filter(ImageFilter.SHARPEN))
+
+    return variants
+
+
 def decode_datamatrix_from_pil(img: Image.Image) -> list[str]:
     """Пробует несколько предобработок изображения и возвращает
     список уникальных декодированных строк (обычно 0 или 1 элемент)."""
     _ensure_distutils()
     from pylibdmtx.pylibdmtx import decode  # ленивый импорт (см. docstring)
 
-    variants = [
-        img,
-        ImageOps.grayscale(img),
-        ImageOps.autocontrast(ImageOps.grayscale(img)),
-    ]
-    enlarged = variants[2].resize((variants[2].width * 2, variants[2].height * 2))
-    variants.append(enlarged)
-    variants.append(enlarged.filter(ImageFilter.SHARPEN))
-
     found: list[str] = []
     seen: set[str] = set()
-    for variant in variants:
+    for variant in _preprocess_variants(img):
         try:
             results = decode(variant)
         except Exception:
