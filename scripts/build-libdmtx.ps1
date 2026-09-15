@@ -39,6 +39,24 @@ if (Test-Path $workWin) {
 }
 New-Item -ItemType Directory -Force -Path $workWin | Out-Null
 
+# --- Checkout libdmtx source with the Windows git (guaranteed present on the
+#     GH Windows runner). MSYS2 is used only as the build toolchain, so we do
+#     not install an MSYS2 git and avoid PATH issues inside bash.
+$srcWin = Join-Path $workWin "src"
+git clone --quiet https://github.com/dmtx/libdmtx.git $srcWin
+if ($LASTEXITCODE -ne 0) {
+    throw "git clone failed (exit $LASTEXITCODE)"
+}
+git -C $srcWin checkout --quiet $CommitSha
+if ($LASTEXITCODE -ne 0) {
+    throw "git checkout failed (exit $LASTEXITCODE)"
+}
+$headSha = (git -C $srcWin rev-parse HEAD).Trim()
+if ($headSha -ne $CommitSha) {
+    throw "HEAD mismatch: expected $CommitSha, got $headSha"
+}
+Write-Host "Checked out libdmtx at $headSha (v$Version)"
+
 # --- Convert Windows paths to MSYS paths using cygpath.exe directly (NOT via
 #     bash: on the very first MSYS2 run, bash prints one-time initial-setup
 #     text to stdout, which would pollute the captured path).
@@ -47,6 +65,12 @@ if (-not $workUnix -or ($workUnix -split "`n").Count -ne 1) {
     throw "Failed to resolve a single MSYS path for ${workWin}: '$workUnix'"
 }
 Write-Host "Work dir (MSYS) : $workUnix"
+
+# --- MSYS path of the source directory (cygpath directly, single-line).
+$srcUnix = (& $cygpath -u $srcWin).Trim()
+if (-not $srcUnix -or ($srcUnix -split "`n").Count -ne 1) {
+    throw "Failed to resolve a single MSYS path for ${srcWin}: '$srcUnix'"
+}
 
 # --- Install MinGW-w64 x64 toolchain + autotools (idempotent; pinned upstream).
 #     `mingw-w64-x86_64-autotools` meta pulls autoconf/automake/libtool/make.
@@ -61,6 +85,7 @@ if ($LASTEXITCODE -ne 0) {
 $env:LIBDMTX_WORK_UNIX   = $workUnix
 $env:LIBDMTX_COMMIT_SHA  = $CommitSha
 $env:LIBDMTX_VERSION     = $Version
+$env:LIBDMTX_SRC_UNIX    = $srcUnix
 
 # --- Build script (run inside the MINGW64 environment via bash -lc).
 #     MINGW64 tools are under /mingw64/bin; we prepend to PATH.
@@ -69,19 +94,7 @@ set -euo pipefail
 export PATH="/mingw64/bin:$PATH"
 set -x
 
-cd "$LIBDMTX_WORK_UNIX"
-
-git clone --quiet https://github.com/dmtx/libdmtx.git src
-cd src
-git checkout --quiet "$LIBDMTX_COMMIT_SHA"
-
-# Verify HEAD matches the pinned commit exactly.
-head_sha="$(git rev-parse HEAD)"
-if [ "$head_sha" != "$LIBDMTX_COMMIT_SHA" ]; then
-  echo "HEAD mismatch: expected $LIBDMTX_COMMIT_SHA, got $head_sha" >&2
-  exit 1
-fi
-echo "Checked out libdmtx at $head_sha (v$LIBDMTX_VERSION)"
+cd "$LIBDMTX_SRC_UNIX"
 
 # Generate configure (autogen.sh — simply runs autoreconf).
 if [ -x ./autogen.sh ]; then
