@@ -118,33 +118,31 @@ fi
 ls -la m4 2>/dev/null || true
 grep -n "AC_PROG_LIBTOOL" configure.ac || true
 
-# Upstream README.mingw recommends -Wl,-no-undefined for Windows/MinGW.
-export LDFLAGS="-Wl,-no-undefined"
-
 # Configure for the MinGW-w64 x64 host (build shared, per upstream README).
 ./configure --host=x86_64-w64-mingw32 --disable-static --enable-shared
 
-# Build. libtool produces the shared DLL (e.g. .libs/libdmtx-0.dll) under
-# MinGW.
-make -j"$(nproc)"
+# Build only the libtool object target. A full `make` attempts to link
+# libdmtx.la via libtool, which fails on mingw without -no-undefined. We avoid
+# that entirely and assemble the DLL manually below, per upstream README.mingw.
+make -j"$(nproc)" libdmtx_la-dmtx.lo
 
-# Only if NO suitable DLL was produced at all, fall back to the manual
-# gcc -shared assembly described in upstream README.mingw.
-if ! find . -maxdepth 2 -type f \( -name 'dmtx.dll' -o -name 'libdmtx*.dll' \) | grep -q .; then
-  if [ -f .libs/libdmtx_la-dmtx.o ]; then
-    gcc -shared \
-      -o dmtx.dll \
-      -static-libgcc \
-      .libs/libdmtx_la-dmtx.o \
-      -Wl,--out-implib,libdmtx.a
-  else
-    echo "libtool produced no DLL and no .libs/libdmtx_la-dmtx.o; cannot assemble manually" >&2
-    ls -la .libs 2>/dev/null || true
-    exit 1
-  fi
+if [ ! -f .libs/libdmtx_la-dmtx.o ]; then
+  echo "Expected object .libs/libdmtx_la-dmtx.o was not produced" >&2
+  ls -la .libs/ 2>/dev/null || true
+  exit 1
 fi
 
-ls -la . .libs/ 2>/dev/null || true
+# Assemble the shared DLL manually (upstream README.mingw method + static
+# libgcc runtime).
+gcc \
+  -shared \
+  -o dmtx.dll \
+  .libs/libdmtx_la-dmtx.o \
+  -Wl,--out-implib,libdmtx.a \
+  -static-libgcc
+
+test -f dmtx.dll
+ls -lh dmtx.dll libdmtx.a
 '@
 
 $buildScriptPath = Join-Path $workWin "build.sh"
