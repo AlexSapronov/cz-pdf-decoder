@@ -182,9 +182,20 @@ $dllWin = $found.FullName
 Write-Host "Built DLL  : $dllWin"
 
 # --- Copy into the active interpreter's pylibdmtx package dir as libdmtx-64.dll.
-$site = (python -c "import site,sys; print([p for p in site.getsitepackages()][0])").Trim()
-$dstDir = Join-Path $site "pylibdmtx"
-if (-not (Test-Path $dstDir)) {
+#     Use find_spec to locate the actually-installed package dir (setup-python's
+#     getsitepackages()[0] can point at the Python prefix, not Lib\site-packages).
+#     find_spec does NOT import wrapper and does NOT require the DLL yet.
+$dstDir = (python -c @"
+import importlib.util
+spec = importlib.util.find_spec('pylibdmtx')
+if spec is None or not spec.submodule_search_locations:
+    raise SystemExit('pylibdmtx package not found')
+print(next(iter(spec.submodule_search_locations)))
+"@).Trim()
+if ($LASTEXITCODE -ne 0) {
+    throw "find_spec('pylibdmtx') failed (exit $LASTEXITCODE)"
+}
+if (-not $dstDir -or -not (Test-Path $dstDir)) {
     throw "pylibdmtx package dir missing: $dstDir"
 }
 $dst = Join-Path $dstDir "libdmtx-64.dll"
