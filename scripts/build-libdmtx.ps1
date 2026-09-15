@@ -21,25 +21,30 @@ $ErrorActionPreference = "Stop"
 # --- Locate MSYS2 (pre-installed on GH Windows runners at C:\msys64).
 $msysBash = "C:\msys64\usr\bin\bash.exe"
 $msysPacman = "C:\msys64\usr\bin\pacman.exe"
+$cygpath = "C:\msys64\usr\bin\cygpath.exe"
 if (-not (Test-Path $msysBash)) {
     throw "MSYS2 bash not found at $msysBash"
 }
 if (-not (Test-Path $msysPacman)) {
     throw "MSYS2 pacman not found at $msysPacman"
 }
+if (-not (Test-Path $cygpath)) {
+    throw "MSYS2 cygpath not found at $cygpath"
+}
 
-# --- Work dir (Windows path -> MSYS path done inside the bash script).
+# --- Work dir.
 $workWin = Join-Path $env:RUNNER_TEMP ("libdmtx-" + $Version)
 if (Test-Path $workWin) {
     Remove-Item -Recurse -Force $workWin
 }
 New-Item -ItemType Directory -Force -Path $workWin | Out-Null
 
-# Convert the Windows work dir to an MSYS path for use inside bash.
-# (Runner temp is like C:\Users\runneradmin\AppData\Local\Temp\...)
-$workUnix = (& $msysBash -lc "cygpath -u '$($workWin -replace '\\','/')'").Trim()
-if (-not $workUnix) {
-    throw "Failed to resolve MSYS path for $workWin"
+# --- Convert Windows paths to MSYS paths using cygpath.exe directly (NOT via
+#     bash: on the very first MSYS2 run, bash prints one-time initial-setup
+#     text to stdout, which would pollute the captured path).
+$workUnix = (& $cygpath -u $workWin).Trim()
+if (-not $workUnix -or ($workUnix -split "`n").Count -ne 1) {
+    throw "Failed to resolve a single MSYS path for $workWin: '$workUnix'"
 }
 Write-Host "Work dir (MSYS) : $workUnix"
 
@@ -51,26 +56,32 @@ if ($LASTEXITCODE -ne 0) {
     throw "pacman install failed (exit $LASTEXITCODE)"
 }
 
+# --- Pass values into bash via environment variables (single-quoted here-string
+#     below means PowerShell performs NO interpolation, so bash sees plain bash).
+$env:LIBDMTX_WORK_UNIX   = $workUnix
+$env:LIBDMTX_COMMIT_SHA  = $CommitSha
+$env:LIBDMTX_VERSION     = $Version
+
 # --- Build script (run inside the MINGW64 environment via bash -lc).
 #     MINGW64 tools are under /mingw64/bin; we prepend to PATH.
-$buildScript = @"
+$buildScript = @'
 set -euo pipefail
-export PATH="/mingw64/bin:\$PATH"
+export PATH="/mingw64/bin:$PATH"
 set -x
 
-cd "$workUnix"
+cd "$LIBDMTX_WORK_UNIX"
 
 git clone --quiet https://github.com/dmtx/libdmtx.git src
 cd src
-git checkout --quiet $CommitSha
+git checkout --quiet "$LIBDMTX_COMMIT_SHA"
 
 # Verify HEAD matches the pinned commit exactly.
-head_sha="\$(git rev-parse HEAD)"
-if [ "\$head_sha" != "$CommitSha" ]; then
-  echo "HEAD mismatch: expected $CommitSha, got \$head_sha" >&2
+head_sha="$(git rev-parse HEAD)"
+if [ "$head_sha" != "$LIBDMTX_COMMIT_SHA" ]; then
+  echo "HEAD mismatch: expected $LIBDMTX_COMMIT_SHA, got $head_sha" >&2
   exit 1
 fi
-echo "Checked out libdmtx at \$head_sha (v$Version)"
+echo "Checked out libdmtx at $head_sha (v$LIBDMTX_VERSION)"
 
 # Generate configure (autogen.sh — simply runs autoreconf).
 if [ -x ./autogen.sh ]; then
@@ -82,29 +93,41 @@ fi
 # Configure for the MinGW-w64 x64 host (build shared, per upstream README).
 ./configure --host=x86_64-w64-mingw32 --disable-static --enable-shared
 
-# Build. libtool produces the shared DLL (e.g. .libs/libdmtx-0.dll or a
-# libtool-managed dmtx.dll) under MinGW.
-make -j"\$(nproc)"
+# Build. libtool produces the shared DLL (e.g. .libs/libdmtx-0.dll) under
+# MinGW.
+make -j"$(nproc)"
 
-# If libtool did not already emit a dmtx.dll, assemble one by hand (the
-# upstream README.mingw path), with a static MinGW runtime so the DLL carries
-# no extra runtime dependencies.
-if [ ! -f dmtx.dll ] && [ ! -f .libs/dmtx.dll ]; then
+# Only if NO suitable DLL was produced at all, fall back to the manual
+# gcc -shared assembly described in upstream README.mingw.
+if ! find . -maxdepth 2 -type f \( -name 'dmtx.dll' -o -name 'libdmtx*.dll' \) | grep -q .; then
+  echo "libtool produced no DLL; assembling dmtx.dll manually" >&2
   mkdir -p dll
   gcc -shared -o dll/dmtx.dll -static-libgcc .libs/*.o
   mv dll/dmtx.dll dmtx.dll 2>/dev/null || true
 fi
 
-ls -la .  .libs/ 2>/dev/null || true
-"@
+ls -la . .libs/ 2>/dev/null || true
+'@
 
 $buildScriptPath = Join-Path $workWin "build.sh"
-# Write with LF line endings for bash.
+# Write with LF (Unix) line endings for bash, no BOM.
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 [System.IO.File]::WriteAllText($buildScriptPath, $buildScript, $utf8NoBom)
 
-# Run; feed the MSYS path to the script.
-$buildScriptUnix = (& $msysBash -lc "cygpath -u '$($buildScriptPath -replace '\\','/')'").Trim()
+# --- Debug: print the generated build.sh with line numbers (no secrets).
+Write-Host "===== generated build.sh ====="
+$i = 1
+Get-Content $buildScriptPath | ForEach-Object {
+    Write-Host ("{0,3}: {1}" -f $i, $_)
+    $i++
+}
+Write-Host "=============================="
+
+# --- Resolve the script's MSYS path (cygpath directly) and run it.
+$buildScriptUnix = (& $cygpath -u $buildScriptPath).Trim()
+if (-not $buildScriptUnix -or ($buildScriptUnix -split "`n").Count -ne 1) {
+    throw "Failed to resolve a single MSYS path for $buildScriptPath: '$buildScriptUnix'"
+}
 & $msysBash -lc "bash '$buildScriptUnix'"
 if ($LASTEXITCODE -ne 0) {
     throw "libdmtx build failed (exit $LASTEXITCODE)"
