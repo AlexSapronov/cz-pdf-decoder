@@ -44,7 +44,7 @@ New-Item -ItemType Directory -Force -Path $workWin | Out-Null
 #     text to stdout, which would pollute the captured path).
 $workUnix = (& $cygpath -u $workWin).Trim()
 if (-not $workUnix -or ($workUnix -split "`n").Count -ne 1) {
-    throw "Failed to resolve a single MSYS path for $workWin: '$workUnix'"
+    throw "Failed to resolve a single MSYS path for ${workWin}: '$workUnix'"
 }
 Write-Host "Work dir (MSYS) : $workUnix"
 
@@ -126,7 +126,7 @@ Write-Host "=============================="
 # --- Resolve the script's MSYS path (cygpath directly) and run it.
 $buildScriptUnix = (& $cygpath -u $buildScriptPath).Trim()
 if (-not $buildScriptUnix -or ($buildScriptUnix -split "`n").Count -ne 1) {
-    throw "Failed to resolve a single MSYS path for $buildScriptPath: '$buildScriptUnix'"
+    throw "Failed to resolve a single MSYS path for ${buildScriptPath}: '$buildScriptUnix'"
 }
 & $msysBash -lc "bash '$buildScriptUnix'"
 if ($LASTEXITCODE -ne 0) {
