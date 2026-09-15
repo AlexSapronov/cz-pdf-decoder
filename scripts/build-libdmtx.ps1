@@ -94,6 +94,18 @@ set -euo pipefail
 export PATH="/mingw64/bin:$PATH"
 set -x
 
+# libtool's aclocal macros live under /mingw64/share/aclocal; autoreconf/aclocal
+# do not look there by default, so AC_PROG_LIBTOOL would be unresolved.
+export ACLOCAL_PATH="/mingw64/share/aclocal${ACLOCAL_PATH:+:$ACLOCAL_PATH}"
+
+# --- Toolchain diagnostics (no secrets) ---
+echo "PATH=$PATH"
+echo "ACLOCAL_PATH=$ACLOCAL_PATH"
+which autoreconf
+which aclocal
+which libtoolize
+ls -l /mingw64/share/aclocal/libtool.m4
+
 cd "$LIBDMTX_SRC_UNIX"
 
 # Generate configure (autogen.sh — simply runs autoreconf).
@@ -102,6 +114,12 @@ if [ -x ./autogen.sh ]; then
 else
   autoreconf -fi
 fi
+
+ls -la m4 2>/dev/null || true
+grep -n "AC_PROG_LIBTOOL" configure.ac || true
+
+# Upstream README.mingw recommends -Wl,-no-undefined for Windows/MinGW.
+export LDFLAGS="-Wl,-no-undefined"
 
 # Configure for the MinGW-w64 x64 host (build shared, per upstream README).
 ./configure --host=x86_64-w64-mingw32 --disable-static --enable-shared
@@ -113,10 +131,17 @@ make -j"$(nproc)"
 # Only if NO suitable DLL was produced at all, fall back to the manual
 # gcc -shared assembly described in upstream README.mingw.
 if ! find . -maxdepth 2 -type f \( -name 'dmtx.dll' -o -name 'libdmtx*.dll' \) | grep -q .; then
-  echo "libtool produced no DLL; assembling dmtx.dll manually" >&2
-  mkdir -p dll
-  gcc -shared -o dll/dmtx.dll -static-libgcc .libs/*.o
-  mv dll/dmtx.dll dmtx.dll 2>/dev/null || true
+  if [ -f .libs/libdmtx_la-dmtx.o ]; then
+    gcc -shared \
+      -o dmtx.dll \
+      -static-libgcc \
+      .libs/libdmtx_la-dmtx.o \
+      -Wl,--out-implib,libdmtx.a
+  else
+    echo "libtool produced no DLL and no .libs/libdmtx_la-dmtx.o; cannot assemble manually" >&2
+    ls -la .libs 2>/dev/null || true
+    exit 1
+  fi
 fi
 
 ls -la . .libs/ 2>/dev/null || true
