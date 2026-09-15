@@ -161,6 +161,45 @@ python -m PyInstaller --clean CZ_Decoder_build.spec
 > `Stop-Process` нужен потому, что Windows не даст PyInstaller перезаписать
 > запущенный `CZ_Decoder.exe`.
 
+## CI-сборка и релиз (GitHub Actions)
+
+Workflow `.github/workflows/release.yml` собирает портативный Windows x64 EXE
+и публикует GitHub Release по тегу `v*` (или вручную через
+`workflow_dispatch`).
+
+Как это работает:
+
+1. Устанавливает Python и зависимости, собирает `libdmtx-64.dll` **из
+   официального исходного кода** `dmtx/libdmtx` **v0.7.4** (BSD-2-Clause),
+   зафиксированного по точному commit SHA. Сборка — autotools + MinGW-w64
+   (CMake в libdmtx появился только в 0.7.7). DLL линкуется со статическим
+   MinGW runtime, поэтому собранный EXE **не требует** установки VC++
+   Redistributable.
+2. Кладёт DLL в `pylibdmtx` внутри `site-packages`, где её находят и
+   `pylibdmtx.dmtx_library`, и `CZ_Decoder_build.spec`.
+3. Проверяет, что загруженная библиотека реально отдаёт `dmtxVersion() ==
+   "0.7.4"` (защита от несовпадения ctypes layout).
+4. Прогоняет `pytest`, затем `PyInstaller`.
+5. Готовит `CZ_Decoder.exe`, ZIP (EXE + README) и `SHA256SUMS.txt`.
+6. По тегу `v*` создаёт GitHub Release с этими артефактами.
+
+Файлы сборки:
+
+- `.github/workflows/release.yml` — pipeline.
+- `scripts/build-libdmtx.ps1` — сборка DLL из исходников (нативным
+  pre-installed MSYS2/MinGW-w64, без сторонних actions).
+
+Запуск релиза:
+
+```bash
+git tag v3.1
+git push origin v3.1
+```
+
+> `pylibdmtx 0.1.10+` не бандлит `libdmtx-64.dll` (DLL убрана из wheel),
+> поэтому DLL собирается на runner из исходников `dmtx/libdmtx` v0.7.4
+> (commit `eba6d51…`).
+
 ## Формат GS1 DataMatrix
 
 ```

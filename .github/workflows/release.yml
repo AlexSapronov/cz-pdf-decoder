@@ -1,0 +1,137 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  PYTHON_VERSION: "3.12"
+  LIBDMTX_VERSION: "0.7.4"
+  LIBDMTX_COMMIT: "eba6d5193fff75efa2707d0c0a5ded9134d2aa58"
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          architecture: x64
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install PyInstaller
+        run: python -m pip install pyinstaller
+
+      # ------------------------------------------------------------------
+      # libdmtx DLL: pylibdmtx 0.1.10 не бандлит DLL. Собираем 0.7.4 из
+      # официального dmtx/libdmtx (autotools + MinGW-w64, т.к. CMake появился
+      # только в 0.7.7). Pin тэга + точного commit SHA. Статический CRT, чтобы
+      # EXE не требовал установки VC++ Redistributable. Без сторонних actions.
+      # ------------------------------------------------------------------
+      - name: Build libdmtx DLL
+        shell: pwsh
+        run: ./scripts/build-libdmtx.ps1 -Version ${{ env.LIBDMTX_VERSION }} -CommitSha ${{ env.LIBDMTX_COMMIT }}
+
+      - name: Run tests
+        run: python -m pytest
+
+      - name: Build with PyInstaller
+        run: python -m PyInstaller --clean CZ_Decoder_build.spec
+
+      - name: Verify EXE exists
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist\CZ_Decoder.exe")) {
+            throw "dist\CZ_Decoder.exe not found — build failed"
+          }
+          Get-Item "dist\CZ_Decoder.exe" | ForEach-Object {
+            Write-Host "EXE: $($_.FullName) ($($_.Length) bytes)"
+          }
+
+      - name: Prepare release files
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $tag = $env:GITHUB_REF_NAME
+          $exe = "dist\CZ_Decoder.exe"
+
+          $exeName = "CZ_Decoder-$tag-windows-x64.exe"
+          $zipName = "CZ_Decoder-$tag-windows-x64.zip"
+
+          Copy-Item $exe "$exeName" -Force
+
+          $stage = Join-Path $env:RUNNER_TEMP "zip_stage"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item $exe (Join-Path $stage "CZ_Decoder.exe") -Force
+          Copy-Item "README.md" (Join-Path $stage "README.md") -Force
+          Compress-Archive -Path "$stage\*" -DestinationPath $zipName -Force
+
+          $hashExe = (Get-FileHash -Algorithm SHA256 $exeName).Hash.ToLower()
+          $hashZip = (Get-FileHash -Algorithm SHA256 $zipName).Hash.ToLower()
+          $sums = "$hashExe  $exeName`n$hashZip  $zipName`n"
+          $sums | Set-Content -NoNewline -Path "SHA256SUMS.txt"
+
+          Write-Host "Created: $exeName, $zipName, SHA256SUMS.txt"
+          Get-Content "SHA256SUMS.txt"
+
+          "exeName=$exeName" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "zipName=$zipName" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CZ_Decoder-windows-x64
+          path: |
+            CZ_Decoder-*-windows-x64.exe
+            CZ_Decoder-*-windows-x64.zip
+            SHA256SUMS.txt
+          retention-days: 30
+
+      # --- GitHub Release: только по tag --------------------------------
+      - name: Create GitHub Release (tag only)
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $notes = @(
+            "CZ PDF Decoder $tag",
+            "",
+            "Windows x64 portable build.",
+            "",
+            "Основное:",
+            "- пакетное распознавание DataMatrix из PDF;",
+            "- GS1 GTIN/serial parsing;",
+            "- извлечение PN и количества;",
+            "- экспорт в Excel;",
+            "- сохранение рядом с исходными PDF;",
+            "- Excel-like selection / Ctrl+C.",
+            "",
+            "Requirements:",
+            "- Windows 10/11 x64.",
+            "",
+            "Note: EXE не подписан цифровой подписью. Windows SmartScreen может показать предупреждение для unsigned EXE."
+          ) -join "`n"
+          $notesFile = Join-Path $env:RUNNER_TEMP "release_notes.md"
+          Set-Content -Path $notesFile -Value $notes -Encoding utf8
+
+          gh release create $tag `
+            --title "CZ PDF Decoder $tag" `
+            --notes-file $notesFile `
+            "CZ_Decoder-$tag-windows-x64.exe" "CZ_Decoder-$tag-windows-x64.zip" "SHA256SUMS.txt"
