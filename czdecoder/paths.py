@@ -10,6 +10,31 @@ from __future__ import annotations
 import os
 
 
+#: Служебные статусные префиксы, которые могут стоять в начале имени папки.
+_STATUS_PREFIXES = ("ЭМ_", "ВВО_", "ООН_")
+
+
+def result_filename_from_directory(directory: str) -> str:
+    """Формирует имя файла результата из имени директории PDF.
+
+    Имя папки может начинаться с одного из служебных статусных префиксов
+    (``ЭМ_``, ``ВВО_``, ``ООН_``) — такой префикс отбрасывается (сравнение
+    case-insensitive, только в начале). Остальная часть имени сохраняется
+    без изменений.
+
+    >>> result_filename_from_directory("ABC123")
+    'result_ABC123.xlsx'
+    >>> result_filename_from_directory("ЭМ_ABC123")
+    'result_ABC123.xlsx'
+    """
+    base = os.path.basename(os.path.normpath(directory))
+    for prefix in _STATUS_PREFIXES:
+        if base.lower().startswith(prefix.lower()):
+            base = base[len(prefix):]
+            break
+    return f"result_{base}.xlsx"
+
+
 def get_common_pdf_directory(rows: list[dict]) -> str | None:
     """Возвращает единственную общую директорию исходных PDF, либо None.
 

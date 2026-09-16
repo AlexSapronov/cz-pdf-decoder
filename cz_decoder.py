@@ -6,7 +6,11 @@ from czdecoder.pipeline import build_page_rows, recognize_row
 from czdecoder.excel import save_excel
 from czdecoder.shortcuts import classify_shortcut
 from czdecoder.bindings import SHEET_BINDINGS
-from czdecoder.paths import get_common_pdf_directory, can_save_next_to_pdf
+from czdecoder.paths import (
+    can_save_next_to_pdf,
+    get_common_pdf_directory,
+    result_filename_from_directory,
+)
 from czdecoder.version import APP_VERSION
 from tksheet import Sheet
 
@@ -226,7 +230,7 @@ def save_excel_next_to_pdf():
             "Разные папки", "PDF находятся в разных папках — сохраните Excel вручную.")
         return
 
-    _save_excel_to(os.path.join(directory, "result.xlsx"))
+    _save_excel_to(os.path.join(directory, result_filename_from_directory(directory)))
 
 
 def clear_table():

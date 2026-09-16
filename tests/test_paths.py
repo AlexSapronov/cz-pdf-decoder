@@ -4,7 +4,11 @@ import sys
 
 import pytest
 
-from czdecoder.paths import can_save_next_to_pdf, get_common_pdf_directory
+from czdecoder.paths import (
+    can_save_next_to_pdf,
+    get_common_pdf_directory,
+    result_filename_from_directory,
+)
 
 
 def _row(path):
@@ -121,3 +125,28 @@ def test_can_save_mixed_dirs_false(tmp_path):
     a.write_bytes(b"%PDF")
     b.write_bytes(b"%PDF")
     assert can_save_next_to_pdf([_row(str(a)), _row(str(b))], True) is False
+
+
+# --- result_filename_from_directory ---
+
+@pytest.mark.parametrize(
+    "folder, expected",
+    [
+        ("ABC123", "result_ABC123.xlsx"),
+        ("ЭМ_ABC123", "result_ABC123.xlsx"),
+        ("ВВО_ABC123", "result_ABC123.xlsx"),
+        ("ООН_ABC123", "result_ABC123.xlsx"),
+        ("ЭМ_ABC_123", "result_ABC_123.xlsx"),
+        ("TEST_ЭМ_ABC", "result_TEST_ЭМ_ABC.xlsx"),
+        ("эм_abc123", "result_abc123.xlsx"),
+        ("ЭМ_RXFJ5_20.09", "result_RXFJ5_20.09.xlsx"),
+    ],
+)
+def test_result_filename(folder, expected):
+    assert result_filename_from_directory(folder) == expected
+
+
+def test_result_filename_from_full_path(tmp_path):
+    d = tmp_path / "ЭМ_ABC123"
+    d.mkdir()
+    assert result_filename_from_directory(str(d)) == "result_ABC123.xlsx"
