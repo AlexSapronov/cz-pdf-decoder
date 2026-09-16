@@ -45,7 +45,7 @@ def get_common_pdf_directory(rows: list[dict]) -> str | None:
     if not rows:
         return None
 
-    dirs = set()
+    dirs: dict[str, str] = {}
     seen_paths = set()
     for r in rows:
         fp = r.get("file_path")
@@ -54,14 +54,15 @@ def get_common_pdf_directory(rows: list[dict]) -> str | None:
         if fp in seen_paths:
             continue
         seen_paths.add(fp)
-        d = os.path.dirname(os.path.abspath(fp))
-        dirs.add(os.path.normcase(os.path.normpath(d)))
+        d = os.path.normpath(os.path.dirname(os.path.abspath(fp)))
+        key = os.path.normcase(d)
+        dirs.setdefault(key, d)
 
     if not dirs:
         return None
     if len(dirs) != 1:
         return None
-    return next(iter(dirs))
+    return next(iter(dirs.values()))
 
 
 def can_save_next_to_pdf(rows: list[dict], recognized: bool) -> bool:

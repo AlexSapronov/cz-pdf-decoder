@@ -85,12 +85,13 @@ def test_duplicate_file_paths_do_not_break(tmp_path):
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only case variance test")
 def test_windows_case_insensitive_dir(tmp_path):
-    """На Windows C:\\X и c:\\x — одна директория (normcase это учитывает)."""
+    """На Windows пути с разным регистром букв — одна директория (normcase)."""
     a = tmp_path / "a.pdf"
     a.write_bytes(b"%PDF")
     rows = [_row(str(a))]
-    # normcase на Windows приводит к lowercase — проверяем контракт функции.
-    assert get_common_pdf_directory(rows) == os.path.normcase(_norm(str(tmp_path)))
+    # normcase на Windows приводит к lowercase — используем как ключ сравнения,
+    # но возвращаем путь в исходном регистре.
+    assert get_common_pdf_directory(rows) == _norm(str(tmp_path))
 
 
 def test_rows_without_file_path_returns_none():
@@ -150,3 +151,28 @@ def test_result_filename_from_full_path(tmp_path):
     d = tmp_path / "ЭМ_ABC123"
     d.mkdir()
     assert result_filename_from_directory(str(d)) == "result_ABC123.xlsx"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-only: preserves dir-name case")
+def test_windows_get_common_dir_preserves_case(tmp_path):
+    """Regression: имя папки в возвращаемом пути сохраняет исходный регистр."""
+    d = tmp_path / "56N1P"
+    d.mkdir()
+    a = d / "a.pdf"
+    a.write_bytes(b"%PDF")
+    result = get_common_pdf_directory([_row(str(a))])
+    assert result is not None
+    assert os.path.basename(result) == "56N1P"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-only: preserves dir-name case")
+def test_windows_preserves_case_with_prefix(tmp_path):
+    """Смешанный регистр с префиксом: префикс убирается, регистр остальной части сохраняется."""
+    d = tmp_path / "ЭМ_56N1P"
+    d.mkdir()
+    a = d / "a.pdf"
+    a.write_bytes(b"%PDF")
+    result = get_common_pdf_directory([_row(str(a))])
+    assert result is not None
+    assert os.path.basename(result) == "ЭМ_56N1P"
+    assert result_filename_from_directory(result) == "result_56N1P.xlsx"
