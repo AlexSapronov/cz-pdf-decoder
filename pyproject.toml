@@ -18,6 +18,14 @@ dependencies = [
 [project.optional-dependencies]
 gui = ["tkinterdnd2>=0.4"]
 dev = ["pytest>=8.0"]
+# Web-версия (experimental). Отдельный extra, чтобы desktop requirements
+# (и PyInstaller build) не тянули FastAPI/uvicorn без необходимости.
+web = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.9",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -109,8 +109,27 @@ czdecoder/         — чистая логика без GUI:
     pdf_utils.py   — рендер страниц, извлечение PN/количества
     excel.py       — экспорт в Excel
     paths.py       — общая папка PDF, имя файла результата
+webapp/            — web-версия (experimental)
 tests/             — набор pytest
 ```
+
+## Web version (experimental)
+
+Web-интерфейс вокруг той же проверенной логики `czdecoder` (не отдельный
+decoder). Позволяет загружать PDF через браузер, распознавать и скачивать
+Excel без desktop-приложения.
+
+Запуск (из корня репозитория):
+
+```bash
+pip install -r requirements.txt -r requirements-web.txt
+python -m uvicorn webapp.main:app --reload
+```
+
+Откройте http://127.0.0.1:8000 . Поле «Груз / накладная» опционально — формирует
+имя результата (`result_56N1P.xlsx`) по тем же правилам, что desktop
+(префиксы `ЭМ_`/`ВВО_`/`ООН_` отбрасываются).
+
 
 ## Сборка Windows EXE
 

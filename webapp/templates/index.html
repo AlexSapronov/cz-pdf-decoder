@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Честный знак PDF → Excel (web)</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <main class="wrap">
+    <h1>Декодер DataMatrix из PDF → Excel</h1>
+    <p class="sub">Web-версия (experimental). Логика — та же, что в desktop.</p>
+
+    <section class="card">
+      <label class="shipment">
+        <span>Груз / накладная (необязательно)</span>
+        <input id="shipment" type="text" placeholder="например: 56N1P" autocomplete="off" />
+      </label>
+
+      <label id="drop" class="drop">
+        <input id="files" type="file" accept=".pdf,application/pdf" multiple hidden />
+        <span class="drop-title">Перетащите PDF-файлы сюда</span>
+        <span class="drop-hint">или нажмите, чтобы выбрать (можно несколько)</span>
+      </label>
+
+      <div class="actions">
+        <button id="decode" type="button">Распознать</button>
+        <button id="clear" type="button" class="secondary">Очистить</button>
+        <button id="download" type="button" class="secondary" disabled>Скачать Excel</button>
+      </div>
+
+      <div id="progress" class="progress" hidden>
+        <div class="bar"><div id="bar-fill" class="fill"></div></div>
+        <span id="progress-text"></span>
+      </div>
+
+      <div id="error" class="error" hidden></div>
+
+      <ul id="filelist" class="filelist"></ul>
+    </section>
+
+    <section class="card" id="result-card" hidden>
+      <div class="table-scroll">
+        <table id="result">
+          <thead>
+            <tr>
+              <th>Полный DM</th><th>GTIN</th><th>PN</th>
+              <th>Кол-во</th><th>Файл</th><th>Страница</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
