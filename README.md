@@ -1,51 +1,59 @@
-# CZ PDF Decoder v3.1
+# CZ PDF Decoder
 
-GUI-утилита для пакетного декодирования DataMatrix кодов маркировки
-«Честный ЗНАК» из PDF-файлов с выгрузкой результата в Excel.
+Windows GUI-утилита для пакетного извлечения DataMatrix-кодов «Честного
+ЗНАКа» из PDF-файлов и выгрузки результата в Excel.
 
-Работает с:
+## Что умеет
 
-- отдельными PDF;
-- несколькими выбранными PDF;
-- целой папкой;
-- drag-and-drop.
+- Загрузка одного или нескольких PDF, целой папки, а также drag-and-drop.
+- Обработка многостраничных PDF (одна строка результата на страницу).
+- Распознавание DataMatrix и извлечение GTIN (проверка контрольной цифры GS1).
+- Извлечение номера PN и количества из текстового слоя PDF.
+- Просмотр результата в таблице, выделение и копирование ячеек (Ctrl+C / Ctrl+A).
+- Сохранение результата в Excel.
 
-## Возможности
+## Быстрый старт (Windows)
 
-- Пакетная загрузка PDF (файлы, папка, drag-and-drop).
-- Обработка многостраничных PDF (по одной строке результата на страницу).
-- Распознавание одного DataMatrix на страницу (через `pylibdmtx`).
-- Несколько fallback-вариантов предобработки изображения:
-  - legacy: grayscale, autocontrast, увеличение ×2, sharpen;
-  - enhanced: бинаризация, quiet zone, NEAREST upscale;
-  - embedded raster images в native-разрешении.
-- Структурный разбор GS1 DataMatrix:
-  - GTIN (AI `01`, 14 цифр, проверка контрольной цифры GS1 mod-10);
-  - serial (AI `21`) — выделяется и хранится **внутренне**;
-  - полный DM сохраняется целиком.
-- Извлечение PN и количества из **текстового слоя** PDF (не OCR).
-- Таблица результатов:
-  - read-only;
-  - Excel-like single selection;
-  - Ctrl+click — multi-select;
-  - drag-select — прямоугольный диапазон;
-  - выбор строки / столбца (клик по заголовку / номеру строки);
-  - Ctrl+A — выделить всё;
-  - Ctrl+C — копировать (TAB / перевод строки);
-  - Ctrl+C / Ctrl+A работают и при русской раскладке Windows.
-- Экспорт результата в `result.xlsx`.
-- Две кнопки сохранения:
-  1. **«Сохранить Excel»** — открывает выбор папки;
-  2. **«Сохранить рядом с PDF»** — доступна, если все исходные PDF
-     находятся в одной и той же папке, и сохраняет `result.xlsx` туда
-     автоматически (без диалога).
+1. Скачайте `CZ_Decoder.exe` из [GitHub Releases](../../releases).
+2. Запустите `CZ_Decoder.exe`.
+3. Загрузите PDF (файл, папку или перетаскиванием).
+4. Нажмите «Распознать».
+5. Нажмите «Сохранить Excel» или «Сохранить рядом с PDF».
 
-> Программа **не OCR'ит сканы**. PN и количество извлекаются из текстового
-> слоя PDF. Распознаётся один DataMatrix на страницу.
+## Использование
 
-## Формат Excel
+1. Загрузите PDF файлы: кнопки «Загрузить PDF» / «Загрузить папку» либо
+   drag-and-drop в окно.
+2. Нажмите «Распознать». Программа обработает каждую страницу и заполнит
+   таблицу.
+3. Проверьте результат, при необходимости скопируйте ячейки или диапазоны
+   через Ctrl+C (работает и на русской раскладке), Ctrl+A — выделить всё.
+4. Сохраните результат одним из двух способов:
 
-Колонки выходного файла `result.xlsx`:
+**«Сохранить Excel»**
+
+Открывает выбор папки и сохраняет файл с фиксированным именем `result.xlsx`.
+
+**«Сохранить рядом с PDF»**
+
+Доступна, когда все исходные PDF лежат в одной папке. Сохраняет файл в эту
+же папку, а имя формируется из имени папки:
+
+```
+ABC123      → result_ABC123.xlsx
+ЭМ_ABC123   → result_ABC123.xlsx
+ВВО_ABC123  → result_ABC123.xlsx
+ООН_ABC123  → result_ABC123.xlsx
+56N1P       → result_56N1P.xlsx
+```
+
+Статусные префиксы `ЭМ_`, `ВВО_`, `ООН_` игнорируются, только если стоят в
+самом начале имени папки (сравнение без учёта регистра). Остальная часть
+имени сохраняется как есть, включая регистр.
+
+## Формат результата
+
+Колонки выходного файла Excel:
 
 - Полный DM
 - GTIN
@@ -54,29 +62,19 @@ GUI-утилита для пакетного декодирования DataMatr
 - Файл
 - Страница
 
-> **Serial (AI 21)** парсится и хранится во внутреннем поле строки результата,
-> но **не выводится** отдельной колонкой ни в GUI, ни в Excel.
+Serial (AI 21) выделяется при разборе, но хранится только во внутреннем поле
+и не выводится отдельной колонкой.
 
-## Структура проекта
+## Ограничения
 
-```
-cz_decoder.py      — GUI (точка входа, tkinter + tksheet)
-czdecoder/         — пакет чистой логики (без GUI):
-    gs1.py         — структурный разбор GS1 DataMatrix (GTIN, serial)
-    datamatrix.py  — декодирование DataMatrix (pylibdmtx + distutils-совместимость)
-    pipeline.py    — конвейер файлы → строки результатов
-    pdf_utils.py   — рендер страницы, извлечение PN/количества
-    excel.py       — экспорт в Excel
-    paths.py       — определение общей папки PDF для «Сохранить рядом с PDF»
-    shortcuts.py   — layout-independent классификация Ctrl+C / Ctrl+A
-    bindings.py    — набор selection-биндингов tksheet (read-only таблица)
-    version.py     — версия приложения (APP_VERSION)
-tests/             — набор pytest
-CZ_Decoder_build.spec — конфигурация PyInstaller для сборки EXE
-requirements.txt  — зависимости
-```
+- Распознаётся один DataMatrix на страницу.
+- PN и количество извлекаются из текстового слоя PDF, OCR сканов не
+  выполняется.
+- «Сохранить рядом с PDF» работает только когда все PDF находятся в одной папке.
 
-## Установка
+## Для разработчика
+
+Требуется Python 3.11+.
 
 ```bash
 python -m venv .venv
@@ -88,150 +86,60 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-> Для `pylibdmtx` на Windows нужна библиотека `libdmtx` (DLL). См. раздел «Сборка EXE».
+Запуск:
 
-## Использование
+```bash
+python cz_decoder.py
+```
 
-1. Загрузить PDF — файл, папку или drag-and-drop.
-2. Нажать «Распознать».
-3. Проверить таблицу результатов.
-4. При необходимости скопировать ячейки / диапазоны через Ctrl+C.
-5. Сохранить результат:
-   - «Сохранить Excel» (выбрать папку) или
-   - «Сохранить рядом с PDF» (если все PDF в одной папке).
-
-## Тесты
+Тесты:
 
 ```bash
 python -m pytest
 ```
 
-Набор regression/unit-тестов покрывает GS1 parsing, DataMatrix preprocessing,
-version compatibility, GUI bindings, keyboard shortcuts и path logic.
+Основные модули:
+
+```
+cz_decoder.py      — GUI (точка входа)
+czdecoder/         — чистая логика без GUI:
+    gs1.py         — разбор GS1 DataMatrix (GTIN, serial)
+    datamatrix.py  — декодирование DataMatrix
+    pipeline.py    — конвейер файлы → строки результата
+    pdf_utils.py   — рендер страниц, извлечение PN/количества
+    excel.py       — экспорт в Excel
+    paths.py       — общая папка PDF, имя файла результата
+tests/             — набор pytest
+```
 
 ## Сборка Windows EXE
 
-```bash
-pip install pyinstaller
-python -m PyInstaller --clean CZ_Decoder_build.spec
-```
-
-Файл `CZ_Decoder_build.spec`:
-
-- автоматически находит `libdmtx-64.dll` (для 64-бит Python) или
-  `libdmtx-32.dll` (для 32-бит) в `pylibdmtx` внутри `site-packages`
-  или user-site (`%APPDATA%\Roaming\Python\Python3xx\site-packages`);
-- кладёт DLL в **корень** собранного приложения (рядом с `CZ_Decoder.exe`),
-  чтобы `pylibdmtx` нашёл её при запуске EXE;
-- если DLL не найдена — сборка падает с понятным сообщением, а не собирает
-  заведомо нерабочий EXE.
-
-### Зависимость от libdmtx DLL
-
-- **libdmtx DLL** должна быть доступна в каталоге `pylibdmtx` (она не входит
-  в pip-wheel `pylibdmtx`, ставится/кладётся отдельно).
-- **Visual C++ Redistributable 2013 x64** может потребоваться на целевой
-  машине, если используемая сборка `libdmtx-64.dll` слинкована против
-  `msvcr120.dll` / `msvcp120.dll`. Для конкретной DLL это уточняется отдельно;
-  универсального требования нет.
-
-### Совместимость distutils (Python 3.12+)
-
-`pylibdmtx` использует `distutils.version.LooseVersion` для выбора ctypes-layout
-в зависимости от версии `libdmtx`. На Python 3.12+ `distutils` удалён из
-stdlib, поэтому проект через `_ensure_distutils()` подставляет настоящий
-`setuptools._distutils.version.LooseVersion` (compatibility shim).
-
-> Troubleshooting: ранее использовался самописный `_FakeLooseVersion`, чей
-> некорректный компаратор заставлял `pylibdmtx` выбирать неверный layout для
-> libdmtx 0.7.4 и приводил к access violation. Исторический баг исправлен
-> переходом на настоящий `LooseVersion`; самописного компаратора больше нет.
-
-### Локальная последовательность сборки
+Для `pylibdmtx` нужна библиотека `libdmtx` (DLL). Она не входит в pip-пакет,
+поэтому перед сборкой соберите DLL скриптом `scripts/build-libdmtx.ps1`.
 
 ```powershell
-git pull
-Get-Process CZ_Decoder -ErrorAction SilentlyContinue | Stop-Process -Force
-Remove-Item -Recurse -Force .\build -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force .\dist  -ErrorAction SilentlyContinue
 python -m PyInstaller --clean CZ_Decoder_build.spec
-.\dist\CZ_Decoder.exe
 ```
 
-> `Stop-Process` нужен потому, что Windows не даст PyInstaller перезаписать
-> запущенный `CZ_Decoder.exe`.
+Файл `CZ_Decoder_build.spec` кладёт найденную `libdmtx-64.dll` (или
+`libdmtx-32.dll` для 32-бит) в корень собираемого приложения, чтобы
+`pylibdmtx` нашёл её при запуске EXE.
 
-## CI-сборка и релиз (GitHub Actions)
+## CI и релизы
 
-Workflow `.github/workflows/release.yml` собирает портативный Windows x64 EXE
-и публикует GitHub Release по тегу `v*` (или вручную через
-`workflow_dispatch`).
+GitHub Actions:
 
-Как это работает:
+- `.github/workflows/ci.yml` — прогоняет тесты на Python 3.11 и 3.12.
+- `.github/workflows/release.yml` — собирает Windows x64 EXE и публикует
+  GitHub Release по тегу `v*` (также доступен ручной запуск через
+  `workflow_dispatch`).
 
-1. Устанавливает Python и зависимости, собирает `libdmtx-64.dll` **из
-   официального исходного кода** `dmtx/libdmtx` **v0.7.4** (BSD-2-Clause),
-   зафиксированного по точному commit SHA. Сборка — autotools + MinGW-w64
-   (CMake в libdmtx появился только в 0.7.7). DLL линкуется со статическим
-   MinGW runtime, поэтому собранный EXE **не требует** установки VC++
-   Redistributable.
-2. Кладёт DLL в `pylibdmtx` внутри `site-packages`, где её находят и
-   `pylibdmtx.dmtx_library`, и `CZ_Decoder_build.spec`.
-3. Проверяет, что загруженная библиотека реально отдаёт `dmtxVersion() ==
-   "0.7.4"` (защита от несовпадения ctypes layout).
-4. Прогоняет `pytest`, затем `PyInstaller`.
-5. Готовит `CZ_Decoder.exe`, ZIP (EXE + README) и `SHA256SUMS.txt`.
-6. По тегу `v*` создаёт GitHub Release с этими артефактами.
-
-Файлы сборки:
-
-- `.github/workflows/release.yml` — pipeline.
-- `scripts/build-libdmtx.ps1` — сборка DLL из исходников (нативным
-  pre-installed MSYS2/MinGW-w64, без сторонних actions).
-
-Запуск релиза:
+Публикация релиза:
 
 ```bash
-git tag v3.1
-git push origin v3.1
+git tag vX.Y
+git push origin vX.Y
 ```
 
-> `pylibdmtx 0.1.10+` не бандлит `libdmtx-64.dll` (DLL убрана из wheel),
-> поэтому DLL собирается на runner из исходников `dmtx/libdmtx` v0.7.4
-> (commit `eba6d51…`).
-
-## Формат GS1 DataMatrix
-
-```
-01<GTIN-14>21<serial>[<GS>91… крипто.хвост …]
-```
-
-- **GTIN** — 14 цифр после AI `01` (проверяется по контрольной цифре GS1 mod-10).
-- **Serial (AI 21)** — идёт **сразу после GTIN**, без GS-разделителя. Читается
-  до первого GS (`\x1d`) либо до конца строки.
-- **Криптохвост** — AI `91`/`92` идёт после serial, отделённый GS (без GS —
-  маркер `91EE`).
-- Сканерные префиксы (`]d2`, `]C1`, `]e0`, `^]`) и `{GS}` нормализуются.
-
-## Зависимости
-
-- PyMuPDF (`fitz`)
-- Pillow
-- pylibdmtx
-- openpyxl
-- tksheet
-- tkinterdnd2
-
-## Что нового в v3.1
-
-- исправлена стабильность DataMatrix decoding на Windows / Python 3.14;
-- исправлена совместимость с libdmtx 0.7.4;
-- улучшена обработка PDF и fallback decoding;
-- Excel-like selection в таблице;
-- Ctrl+C / Ctrl+A не зависят от EN/RU раскладки;
-- добавлено «Сохранить рядом с PDF»;
-- проведена проверка на большом реальном наборе PDF.
-
-## Лицензия
-
-Приватный проект. Все права защищены.
+Детали сборки DLL и подготовки артефактов — в
+`.github/workflows/release.yml` и `scripts/build-libdmtx.ps1`.
