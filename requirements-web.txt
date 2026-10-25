@@ -1,0 +1,9 @@
+# Web-версия (experimental) CZ PDF Decoder.
+# Устанавливать вместе с core requirements.txt:
+#   pip install -r requirements.txt -r requirements-web.txt
+fastapi>=0.110
+uvicorn>=0.29
+jinja2>=3.1
+python-multipart>=0.0.9
+# TestClient требует httpx2 (starlette >=0.4x): используется в tests/test_web.py.
+httpx2>=2.0
